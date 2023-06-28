@@ -3,6 +3,8 @@ const app = express();
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 require('dotenv').config()
 const jwt = require('jsonwebtoken');
+const nodemailer = require("nodemailer");
+const mg = require('nodemailer-mailgun-transport');
 const stripe = require('stripe')(process.env.PAYMENT_SECRET_KEY);
 const cors = require('cors');
 const port = process.env.PORT || 5000;
@@ -10,6 +12,41 @@ const port = process.env.PORT || 5000;
 
 app.use(cors())
 app.use(express.json())
+
+
+const auth = {
+    auth: {
+      api_key: process.env.EMAILSEND_API_KEY,
+      domain: process.env.EMAILSEND_DOMIN_KEY
+    }
+  }
+  
+  const transporter = nodemailer.createTransport(mg(auth));
+
+
+const sendPaymentConfirmationEmail = payment => {
+    transporter.sendMail({
+        from: "joypurokistho15@gmail.com", // verified sender email
+        to: "joypurokistho15@gmail.com", // recipient email
+        subject: "Payment successful. Enjoy your food soon..", // Subject line
+        text: "Hello world!", // plain text body
+        html: 
+        `
+        <div>
+           <h2>Payment Confirm!!</h2>
+           <p>Transformation Id : ${payment.transactionId}</p>
+        </div>
+        `, // html body
+    }, function (error, info) {
+        if (error) {
+            console.log(error);
+        } else {
+            console.log('Email sent: ' + info.response);
+        }
+    });
+}
+
+
 
 const verifyJwt = (req, res, next) => {
     const authorization = req.headers.authorization;
@@ -197,6 +234,9 @@ async function run() {
             const query = { _id: { $in: payment.cartItemId.map(id => new ObjectId(id)) } }
             const deleteResult = await cartDatabase.deleteMany(query)
 
+            // send info for send email to user 
+            sendPaymentConfirmationEmail(payment)
+
             res.send({ insertResult, deleteResult })
         })
 
@@ -215,49 +255,6 @@ async function run() {
             })
         })
 
-
-        /**
-    * ---------------
-    * BANGLA SYSTEM(second best solution)
-    * ---------------
-    * 1. load all payments
-    * 2. for each payment, get the menuItems array
-    * 3. for each item in the menuItems array get the menuItem from the menu collection
-    * 4. put them in an array: allOrderedItems
-    * 5. separate allOrderedItems by category using filter
-    * 6. now get the quantity by using length: pizzas.length
-    * 7. for each category use reduce to get the total amount spent on this category
-    * 
-   */
-
-        //  [
-        //     {
-        //       $lookup: {
-        //         from: 'menu',
-        //         localField: 'menuItems',
-        //         foreignField: '_id',
-        //         as: 'menuItemsData'
-        //       }
-        //     },
-        //     {
-        //       $unwind: '$menuItemsData'
-        //     },
-        //     {
-        //       $group: {
-        //         _id: '$menuItemsData.category',
-        //         count: { $sum: 1 },
-        //         total: { $sum: '$menuItemsData.price' }
-        //       }
-        //     },
-        //     {
-        //       $project: {
-        //         category: '$_id',
-        //         count: 1,
-        //         total: { $round: ['$total', 2] },
-        //         _id: 0
-        //       }
-        //     }
-        //   ];
 
         app.get('/order-states', async (req, res) => {
             const pipeline = [
